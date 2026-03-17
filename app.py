@@ -45,6 +45,7 @@ if "global_machine_wins" not in st.session_state:
 
 try:
     df = pd.read_csv("messages.csv") # [cite: 1]
+    st.write("Classes encontradas:", df['label'].unique()) # Isto deve mostrar ['ham', 'spam']
 except FileNotFoundError:
     st.error("❌ Ficheiro messages.csv não encontrado.")
     st.stop()
