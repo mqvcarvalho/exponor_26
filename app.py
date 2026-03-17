@@ -78,7 +78,7 @@ with tab1:
         st.metric("Vitórias Máquina (Hoje)", st.session_state.global_machine_wins, delta_color="inverse")
     with col3:
         accuracy = "94%" # Exemplo visual para a feira
-        st.metric("Saúde do Modelo (Accuracy)", accuracy, "稳定")
+        st.metric("Saúde do Modelo (Accuracy)", accuracy, "Estável")
 
     st.markdown("### 🔍 Classifica estas 5 mensagens:")
     
