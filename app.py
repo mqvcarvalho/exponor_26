@@ -1,167 +1,168 @@
 import streamlit as st
 import pandas as pd
 import random
+import os
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC # Alterado para SVC com probability=True
+from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split
 
-# Configuração da página para um look mais profissional
-st.set_page_config(page_title="Human vs Machine: Spam Challenge", page_icon="🤖", layout="wide")
+# --- CONFIGURAÇÃO E PERSISTÊNCIA ---
+st.set_page_config(page_title="Human vs Machine Challenge", page_icon="🤖", layout="wide")
+
+def carregar_stats():
+    """Lê as vitórias acumuladas de um ficheiro CSV local."""
+    if not os.path.exists("stats.csv"):
+        return 0, 0
+    try:
+        stats_df = pd.read_csv("stats.csv")
+        return int(stats_df["human_wins"].iloc[0]), int(stats_df["machine_wins"].iloc[0])
+    except:
+        return 0, 0
+
+def salvar_stats(h_wins, m_wins):
+    """Guarda as vitórias acumuladas num ficheiro CSV local."""
+    stats_df = pd.DataFrame({"human_wins": [h_wins], "machine_wins": [m_wins]})
+    stats_df.to_csv("stats.csv", index=False)
 
 def explicacao_heuristica(msg, label):
     msg_lower = msg.lower()
-    explicacoes_spam = []
-    explicacoes_ham = []
+    explicacoes = []
     
-    # SPAM [cite: 1]
-    if any(word in msg_lower for word in ["ganha", "grátis", "oferta", "dinheiro", "prémio", "urgente"]):
-        palavras = [w for w in ["ganha", "grátis", "oferta", "dinheiro", "prémio", "urgente"] if w in msg_lower]
-        explicacoes_spam.append(f"🟡 Usa linguagem promocional: **{', '.join(palavras)}**.")
+    if label == "spam":
+        if any(w in msg_lower for w in ["ganha", "grátis", "oferta", "dinheiro", "prémio", "urgente"]):
+            explicacoes.append("🟡 Linguagem promocional detetada")
+        if "http" in msg_lower or "www" in msg_lower:
+            explicacoes.append("🔗 Link suspeito encontrado")
+        if any(char.isdigit() for char in msg_lower) and "sms" in msg_lower:
+            explicacoes.append("📲 Instrução de SMS automático")
+    else:
+        if any(w in msg_lower for w in ["aula", "almoço", "viagem", "combinamos", "amanhã"]):
+            explicacoes.append("💬 Linguagem pessoal/quotidiana")
 
-    if "http" in msg_lower or "www" in msg_lower or "link" in msg_lower:
-        explicacoes_spam.append("🔗 Contém um **link** suspeito.")
+    return " | ".join(explicacoes) if explicacoes else "ℹ️ Padrão estatístico identificado pelo modelo"
 
-    if any(char.isdigit() for char in msg_lower) and any(p in msg_lower for p in ["envie", "sms", "123", "número"]):
-        explicacoes_spam.append("📲 Instruções de SMS/Números automáticos.")
-
-    # HAM [cite: 1]
-    if any(word in msg_lower for word in ["aula", "slides", "aniversário", "almoço", "viagem", "combinamos", "amanhã"]):
-        palavras = [w for w in ["aula", "slides", "aniversário", "almoço", "viagem", "combinamos", "amanhã"] if w in msg_lower]
-        explicacoes_ham.append(f"💬 Linguagem pessoal: **{', '.join(palavras)}**.")
-
-    if label == "spam" and explicacoes_spam:
-        return "📌 **Razões:** " + " | ".join(explicacoes_spam)
-    elif label == "ham" and explicacoes_ham:
-        return "📌 **Razões:** " + " | ".join(explicacoes_ham)
-    return "ℹ️ Classificação baseada em padrões estatísticos."
-
-# Inicializar estados de sessão para o "Score Global" da feira
-if "global_human_wins" not in st.session_state:
-    st.session_state.global_human_wins = 0
-if "global_machine_wins" not in st.session_state:
-    st.session_state.global_machine_wins = 0
-
+# --- INICIALIZAÇÃO DE DADOS ---
 try:
-    df = pd.read_csv("messages.csv") # [cite: 1]
-    st.write("Classes encontradas:", df['label'].unique()) # Isto deve mostrar ['ham', 'spam']
+    df = pd.read_csv("messages.csv")
 except FileNotFoundError:
-    st.error("❌ Ficheiro messages.csv não encontrado.")
+    st.error("❌ Erro: O ficheiro 'messages.csv' não foi encontrado!")
     st.stop()
 
+# Inicializar vetores e modelos
 vectorizer = CountVectorizer()
-X = vectorizer.fit_transform(df["message"]) # [cite: 1]
-y = df["label"] # [cite: 1]
+X = vectorizer.fit_transform(df["message"])
+y = df["label"]
 
-# Modelos com suporte a probabilidade para a "Barra de Confiança"
+# Modelos com suporte a probabilidade para a barra de confiança
 models = {
     "Naive Bayes": MultinomialNB(),
     "Logistic Regression": LogisticRegression(max_iter=1000),
-    "SVM (High Precision)": SVC(probability=True) 
+    "SVM (High Precision)": SVC(probability=True)
 }
 
-for model in models.values():
-    model.fit(X, y) # [cite: 1]
+for mdl in models.values():
+    mdl.fit(X, y)
 
-st.title("🤖 Human vs Machine: The Spam Quiz")
-st.markdown("---")
+# Carregar estatísticas persistentes
+h_inicial, m_inicial = carregar_stats()
+if "global_human_wins" not in st.session_state:
+    st.session_state.global_human_wins = h_inicial
+if "global_machine_wins" not in st.session_state:
+    st.session_state.global_machine_wins = m_inicial
 
-tab1, tab2 = st.tabs(["🎮 O Grande Duelo", "🔍 Laboratório de Testes"])
+# --- INTERFACE ---
+st.title("🤖 Human vs Machine: O Quiz do Spam")
+st.markdown("Testa os teus instintos contra a Inteligência Artificial!")
+st.divider()
+
+tab1, tab2 = st.tabs(["🎮 O Grande Duelo", "🔬 Laboratório de Testes"])
 
 with tab1:
-    # --- MÉTRICAS DE PERFORMANCE EM TEMPO REAL ---
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Vítórias Humanos (Hoje)", st.session_state.global_human_wins)
-    with col2:
-        st.metric("Vitórias Máquina (Hoje)", st.session_state.global_machine_wins, delta_color="inverse")
-    with col3:
-        accuracy = "94%" # Exemplo visual para a feira
-        st.metric("Saúde do Modelo (Accuracy)", accuracy, "Estável")
+    # Métricas de topo (Gamificação)
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Vitórias Humanos", st.session_state.global_human_wins)
+    m2.metric("Vitórias Máquina", st.session_state.global_machine_wins, delta_color="inverse")
+    m3.metric("Modelo de IA", "Ativo", "Estável")
 
-    st.markdown("### 🔍 Classifica estas 5 mensagens:")
-    
     if "sample_df" not in st.session_state:
-        st.session_state.sample_df = df.sample(5).reset_index(drop=True) # [cite: 1]
+        st.session_state.sample_df = df.sample(5).reset_index(drop=True)
 
     sample_df = st.session_state.sample_df
     user_guesses = []
 
+    st.subheader("Classifica as seguintes mensagens:")
     for i, row in sample_df.iterrows():
         with st.expander(f"Mensagem #{i+1}", expanded=True):
             st.write(f"**{row['message']}**")
-            user_guesses.append(st.radio("O que achas?", ["ham", "spam"], key=f"q{i}", horizontal=True))
+            user_guesses.append(st.radio("É Spam?", ["ham", "spam"], key=f"user_q_{i}", horizontal=True))
 
-    if st.button("🚀 SUBMETER E COMPARAR RESULTADOS", use_container_width=True):
-        selected_model = models["Naive Bayes"]
+    if st.button("🚀 SUBMETER RESPOSTAS", use_container_width=True):
+        # Usamos o Naive Bayes como o modelo padrão para o quiz
+        current_model = models["Naive Bayes"]
         X_sample = vectorizer.transform(sample_df["message"])
-        model_preds = selected_model.predict(X_sample)
-        model_probs = selected_model.predict_proba(X_sample)
+        model_preds = current_model.predict(X_sample)
+        model_probs = current_model.predict_proba(X_sample)
 
         u_correct = 0
         m_correct = 0
 
+        st.divider()
         for i in range(len(sample_df)):
-            true_label = sample_df.loc[i, "label"]
-            machine_label = model_preds[i]
-            prob = max(model_probs[i]) * 100
+            true_l = sample_df.loc[i, "label"]
+            machine_l = model_preds[i]
+            conf = max(model_probs[i]) * 100
             
-            # FEEDBACK VISUAL IMEDIATO
-            st.markdown(f"#### Mensagem {i+1}")
             c1, c2 = st.columns(2)
-            
             with c1:
-                if user_guesses[i] == true_label:
+                if user_guesses[i] == true_l:
                     st.success(f"Tu: {user_guesses[i].upper()} ✅")
                     u_correct += 1
                 else:
                     st.error(f"Tu: {user_guesses[i].upper()} ❌")
-            
             with c2:
-                if machine_label == true_label:
-                    st.info(f"Máquina: {machine_label.upper()} ({prob:.1f}%) ✅")
-                    m_correct += 1
-                else:
-                    st.warning(f"Máquina: {machine_label.upper()} ({prob:.1f}%) ❌")
+                icon = "✅" if machine_l == true_l else "❌"
+                st.info(f"Máquina: {machine_l.upper()} ({conf:.1f}%) {icon}")
+                if machine_l == true_l: m_correct += 1
             
-            st.caption(explicacao_heuristica(sample_df.loc[i, 'message'], true_label))
+            st.caption(f"_{explicacao_heuristica(sample_df.loc[i, 'message'], true_l)}_")
             st.divider()
 
-        # Atualizar Score Global
+        # Atualizar e salvar recordes
         if u_correct > m_correct:
             st.balloons()
             st.session_state.global_human_wins += 1
-            st.success("🏆 GANHASTE À MÁQUINA!")
+            st.success("🏆 VITÓRIA HUMANA! Superaste o algoritmo.")
         elif m_correct > u_correct:
+            st.error("💻 A MÁQUINA VENCEU! O algoritmo foi mais preciso.")
             st.session_state.global_machine_wins += 1
-            st.error("💻 A MÁQUINA GANHOU! Tenta outra vez.")
         else:
-            st.info("🤝 EMPATE TÉCNICO!")
+            st.warning("🤝 EMPATE! Estás ao nível da máquina.")
         
-        if st.button("Jogar Novamente"):
+        salvar_stats(st.session_state.global_human_wins, st.session_state.global_machine_wins)
+        
+        if st.button("Jogar Nova Ronda"):
             del st.session_state.sample_df
             st.rerun()
 
 with tab2:
-    st.header("🔬 Teste de Stress do Modelo")
-    user_input = st.text_input("Escreve uma mensagem para enganar a IA:")
+    st.header("🔬 Laboratório de Testes")
+    st.markdown("Escreve a tua própria mensagem para ver a confiança de cada modelo.")
     
-    if user_input:
-        input_vec = vectorizer.transform([user_input])
-        col_m1, col_m2, col_m3 = st.columns(3)
+    test_input = st.text_input("Mensagem personalizada:")
+    if test_input:
+        input_vec = vectorizer.transform([test_input])
+        cols = st.columns(len(models))
         
         for idx, (name, mdl) in enumerate(models.items()):
-            pred = mdl.predict(input_vec)[0]
-            prob = max(mdl.predict_proba(input_vec)[0]) * 100
-            
-            with [col_m1, col_m2, col_m3][idx]:
+            with cols[idx]:
+                pred = mdl.predict(input_vec)[0]
+                prob = max(mdl.predict_proba(input_vec)[0]) * 100
                 st.subheader(name)
                 if pred == "spam":
-                    st.error("🚨 SPAM DETECTADO")
+                    st.error("🚨 SPAM")
                 else:
-                    st.success("✅ MENSAGEM SEGURA")
-                
-                # BARRA DE CONFIANÇA
+                    st.success("✅ LEGÍTIMA")
                 st.write(f"Confiança: {prob:.1f}%")
                 st.progress(prob / 100)
